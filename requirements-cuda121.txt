@@ -12,7 +12,7 @@ pillow
 pillow-heif
 opencv-python
 sentence-transformers
-torch==2.5.1+cu121
+torch==2.13.0
 torchvision==0.20.1+cu121
 tqdm
 transformers
