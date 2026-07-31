@@ -1,0 +1,2 @@
+[console_scripts]
+shelf-pipeline = unified_shelf_pipeline.cli:main

@@ -1,0 +1,239 @@
+Metadata-Version: 2.4
+Name: unified-shelf-pipeline
+Version: 0.1.0
+Summary: Shelf product recognition, price OCR, promotion classification, and alignment.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# Unified Shelf Pipeline
+
+This is the single top-level folder for the shelf pipeline. It connects the
+project stages into one runtime:
+
+1. Detect products on a shelf image.
+2. Classify each product crop with the memory-bank product recognizer.
+3. Detect price tags.
+4. Extract prices and classify each tag as promotional or regular.
+5. Align price tags with products.
+6. Write an annotated image and two CSV/DataFrame outputs per source image.
+
+## Project Structure
+
+```text
+artifacts/                     Runtime detector and recognition artifacts
+input_images/                  Local images to process
+outputs/                       Generated annotations, crops, and CSVs
+run_pipeline.py                Simple command-line launcher
+src/unified_shelf_pipeline/    Installable runtime package
+  cli.py                       Command-line interface
+  config.py                    Runtime configuration and artifact paths
+  pipeline.py                  Pipeline orchestration
+  models.py                    Shared runtime data models
+  diagnostics.py               Environment and artifact checks
+  image_processing/            Image I/O, object detection, and geometry
+  shelf_analysis/              Product alignment and promotion classification
+  price_extraction/            Price-tag text extraction and price parsing
+  product_recognition/         Memory-bank product inference
+  result_output/               CSV schemas, annotations, and result writers
+tests/
+  unit/                        Isolated business-logic tests
+  integration/                 Multi-stage pipeline tests
+  smoke/                       Packaging and artifact checks
+tools/                         Standalone product-inference command
+```
+
+## Default Artifacts
+
+The pipeline uses the bundled artifacts by default:
+
+- Shelf detector: `artifacts/shelf_detector/shelf_server.pt`
+- Price-tag detector: `artifacts/price_tag_detector/best.pt`
+- Product memory bank: `artifacts/product_memory_bank/product_memory_bank_real_dataset.pkl`
+- Product thresholds: `artifacts/product_thresholds/thresholds.csv`
+
+## Installation
+
+Run every command in this document from the `unified_shelf_pipeline/` folder.
+Python 3.12 is recommended. Create and activate a fresh virtual environment in
+PowerShell:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+```
+
+Install exactly one requirements file. Each file installs the runtime
+dependencies and this project in editable mode. For the default PyTorch
+distribution:
+
+```powershell
+python -m pip install -r .\requirements.txt
+```
+
+For an NVIDIA GPU, select the one file matching the required PyTorch CUDA wheel
+build instead of installing `requirements.txt` separately:
+
+```powershell
+# CUDA 11.8
+python -m pip install -r .\requirements-cuda118.txt
+
+# CUDA 12.1
+python -m pip install -r .\requirements-cuda121.txt
+
+# CUDA 12.8
+python -m pip install -r .\requirements-cuda128.txt
+```
+
+Each CUDA file contains the complete pipeline dependency set and installs the
+same local project. The NVIDIA driver must support the selected CUDA wheel
+build. Confirm the installed PyTorch build and GPU visibility:
+
+```powershell
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+```
+
+Check dependencies and artifact paths without loading models:
+
+```powershell
+python .\run_pipeline.py --check-env
+```
+
+## Run
+
+Place images in `input_images/`. Supported formats are `.jpg`, `.jpeg`, `.png`,
+`.bmp`, `.webp`, `.heic`, and `.heif`.
+
+Process every supported image in the folder:
+
+```powershell
+python .\run_pipeline.py --input .\input_images
+```
+
+The command writes results to `outputs/`. It also accepts a single image path;
+use `--help` to see artifact overrides and all optional settings.
+
+```powershell
+python .\run_pipeline.py --help
+```
+
+## Pipeline Components
+
+The detector tables below report validation metrics embedded in the bundled
+checkpoints. They are reference values rather than full-pipeline benchmarks;
+the validation datasets and splits are not included in this repository.
+
+### Product Detection
+
+The single-class YOLO model in `artifacts/shelf_detector/shelf_server.pt`
+detects product boxes. The default confidence threshold is `0.25`, followed by
+class-agnostic non-maximum suppression at `0.25` IoU to remove duplicate boxes.
+Use `--product-conf` to change confidence or `--no-product-nms` to disable the
+additional overlap filtering.
+
+| Precision | Recall | mAP50 | mAP50-95 |
+| ---: | ---: | ---: | ---: |
+| 0.92918 | 0.89416 | 0.94918 | 0.72743 |
+
+### Product Classification
+
+Each detected product crop is embedded with
+`Qwen/Qwen3-VL-Embedding-2B`. A FAISS cosine-similarity index retrieves the five
+nearest memory-bank images, scores are averaged by product label, and the best
+label is checked against its threshold from `thresholds.csv`. Predictions below
+the threshold are returned as `__Unknown__`; the best and second-best scores,
+margin, threshold, and rejection reason remain available for auditing.
+
+### Price-Tag Detection
+
+The single-class YOLO model in `artifacts/price_tag_detector/best.pt` detects
+price-tag boxes with a default confidence threshold of `0.25`. Change the
+threshold with `--price-tag-conf` when tuning recall versus false detections.
+
+| Precision | Recall | mAP50 | mAP50-95 |
+| ---: | ---: | ---: | ---: |
+| 0.99163 | 0.99063 | 0.99474 | 0.89670 |
+
+### Price Number Extraction
+
+PP-OCRv6 reads each detected tag using Portuguese/Latin recognition. By default,
+crops are enlarged `3x`, OCR candidates below `0.40` confidence are ignored,
+and up to three spatially ordered prices are returned. The parser joins split
+whole/cents fragments, preserves price tiers, rejects quantity text such as
+`600 g`, and retries difficult tags with a lower crop and contrast enhancement.
+Use the `--ocr-*` options to tune it or `--no-ocr` to disable OCR.
+
+### Promotion Classification
+
+Promotion classification combines tag color, shelf-local size and shape, and
+OCR keywords such as `OFERTA`. It uses surrounding tags to infer the regular
+store palette and returns `uncertain` when the evidence is insufficient. Disable
+it with `--no-sale-classification`; use `--sale-regular-tag-color` for a known
+white, yellow, or red store format.
+
+### Price-Tag/Product Alignment
+
+Only products above a price tag are candidates. Tags are grouped into shelf
+rows, products are assigned to the nearest row below them, and each row is
+resolved as an ordered one-to-one match so connections remain shelf-local and
+do not cross. Excess or implausibly distant detections can remain unmatched.
+
+When the closest crop is unknown, a known product directly above the tag or a
+strong same-row label consensus may correct the match. The CSV output records
+the original candidate, selected product, distances, costs, correction reason,
+and alignment status.
+
+## Outputs
+
+For each image, the pipeline writes:
+
+```text
+outputs/
+  image_stem/
+    annotated.jpg
+    products.csv
+    price_tags.csv
+    product_crops/
+    price_tag_crops/
+  all_products.csv
+  all_price_tags.csv
+```
+
+`products.csv` contains product boxes, classification scores and rejection
+evidence, plus aligned price-tag information. `price_tags.csv` contains tag
+boxes, up to three prices and OCR confidences, promotion evidence, and alignment
+details. `all_products.csv` and `all_price_tags.csv` combine those rows across
+all processed images. The same tables are returned in memory as pandas
+DataFrames.
+
+## Python API
+
+```python
+from unified_shelf_pipeline import ShelfPipeline, UnifiedPipelineConfig
+
+pipeline = ShelfPipeline(UnifiedPipelineConfig())
+results = pipeline.process("path/to/shelf_images")
+
+for result in results:
+    print(result.products_df)
+    print(result.price_tags_df)
+    print(result.annotated_image_path)
+```
+
+## Standalone Product Inference
+
+Run product classification without shelf or price-tag detection:
+
+```powershell
+python .\tools\run_product_inference.py --help
+```
+
+Memory-bank creation, dataset splitting, embedding caching, and threshold
+optimization are outside this repository; this tool consumes inference-ready
+artifacts only.
+
+## Tests
+
+```powershell
+python -B -m unittest discover -s tests
+```

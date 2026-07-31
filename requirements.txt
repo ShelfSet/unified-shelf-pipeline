@@ -1,0 +1,22 @@
+# Default cross-platform dependencies for the unified pipeline.
+# Use one requirements-cuda*.txt file instead when a pinned NVIDIA CUDA build
+# of PyTorch is required.
+-e .
+
+faiss-cpu
+numpy
+pandas
+pillow
+pillow-heif
+opencv-python
+sentence-transformers
+torch
+torchvision
+tqdm
+transformers
+ultralytics
+
+# Required for price-number extraction. The pipeline can run with --no-ocr
+# without these two packages.
+paddleocr==3.7.0
+paddlepaddle==3.2.2

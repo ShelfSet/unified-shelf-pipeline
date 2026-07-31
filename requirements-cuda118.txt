@@ -1,0 +1,24 @@
+# Complete unified-pipeline installation with PyTorch for CUDA 11.8.
+# PyTorch wheels are resolved from the official CUDA 11.8 wheel index.
+--index-url https://download.pytorch.org/whl/cu118
+--extra-index-url https://pypi.org/simple
+
+-e .
+
+faiss-cpu
+numpy
+pandas
+pillow
+pillow-heif
+opencv-python
+sentence-transformers
+torch==2.7.1+cu118
+torchvision==0.22.1+cu118
+tqdm
+transformers
+ultralytics
+
+# Required for price-number extraction. The pipeline can run with --no-ocr
+# without these two packages.
+paddleocr==3.7.0
+paddlepaddle==3.2.2
