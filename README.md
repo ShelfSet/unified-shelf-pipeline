@@ -35,6 +35,21 @@ tests/
 tools/                         Standalone product-inference command
 ```
 
+## Downloading Models
+
+Pre-trained model artifacts and datasets are available in this shared ShelfSet Google Drive folder:
+
+https://drive.google.com/drive/folders/1l-iA7Y6t8sXIwislklIE_2iRVqQ_PCW0?usp=sharing
+
+To download them into `artifacts/downloaded/` automatically (requires [gdown](https://github.com/wkentaro/gdown)):
+
+```bash
+pip install gdown
+node scripts/download-models.js
+```
+
+The downloaded files are ignored by git (see `.gitignore`).
+
 ## Default Artifacts
 
 The pipeline uses the bundled artifacts by default:

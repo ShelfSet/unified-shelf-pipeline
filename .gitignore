@@ -1,2 +1,5 @@
 .venv/
 __pycache__/
+
+# Downloaded model artifacts (see scripts/download-models.js)
+artifacts/downloaded/
